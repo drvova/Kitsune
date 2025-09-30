@@ -150,22 +150,35 @@ start_services() {
     print_status "Next.js port: 3000"
     print_status "Proxy port: 8080"
 
-    # Check if proxy binary exists
-    if [ ! -f "proxy-m3u8/proxy-server" ]; then
-        print_status "Proxy binary not found, building it..."
-        cd proxy-m3u8 && go build -o proxy-server cmd/main.go && cd ..
-        print_success "Proxy binary built successfully"
-    fi
-
     # Start Next.js server
     print_status "Starting Next.js server..."
     npm start &
     NEXT_PID=$!
 
-    # Start proxy server
+    # Start proxy server with fallback logic
     print_status "Starting proxy server..."
-    cd proxy-m3u8 && PORT=8080 ./proxy-server &
-    PROXY_PID=$!
+    cd proxy-m3u8
+
+    # Try different binary options in order of preference
+    if [ -f "proxy-server-linux" ]; then
+        print_status "Using Linux pre-built binary..."
+        PORT=8080 ./proxy-server-linux &
+        PROXY_PID=$!
+    elif [ -f "proxy-server" ]; then
+        print_status "Using pre-built binary..."
+        PORT=8080 ./proxy-server &
+        PROXY_PID=$!
+    elif command -v go &> /dev/null; then
+        print_status "Building proxy from source..."
+        go build -o proxy-server cmd/main.go && PORT=8080 ./proxy-server &
+        PROXY_PID=$!
+    else
+        print_error "No proxy binary available and Go runtime not found."
+        cd ..
+        kill $NEXT_PID 2>/dev/null || true
+        exit 1
+    fi
+
     cd ..
 
     print_status "Services started:"
@@ -215,9 +228,14 @@ main() {
         exit 1
     fi
 
-    # Check if Go is available (for proxy)
+    # Check if Go is available and proxy binary exists
     if ! command -v go &> /dev/null; then
-        print_warning "Go is not available. Proxy server may not work."
+        print_warning "Go runtime not found, will use pre-built binary."
+        if [ ! -f "proxy-m3u8/proxy-server" ] && [ ! -f "proxy-m3u8/proxy-server-linux" ]; then
+            print_error "Neither Go runtime nor pre-built proxy binary found. Proxy server cannot start."
+            print_status "Please ensure Go is installed or include a pre-built proxy binary."
+            exit 1
+        fi
     fi
 
     start_services

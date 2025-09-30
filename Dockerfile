@@ -58,6 +58,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Install Go runtime for proxy server
+RUN apk add --no-cache go git
+
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -72,6 +75,8 @@ RUN chown nextjs:nodejs .next
 # Copy standalone output
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static/
+COPY --from=builder --chown=nextjs:nodejs /app/proxy-m3u8/proxy-server ./proxy-m3u8/
+COPY --from=builder --chown=nextjs:nodejs /app/proxy-m3u8/proxy-server-linux ./proxy-m3u8/
 
 USER nextjs
 
