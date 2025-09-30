@@ -1,6 +1,5 @@
 import React from "react";
 import { DiscordLogoIcon, GitHubLogoIcon } from "@radix-ui/react-icons";
-import Image from "next/image";
 
 const Footer = () => {
   return (
