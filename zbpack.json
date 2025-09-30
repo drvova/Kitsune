@@ -1,0 +1,5 @@
+{
+  "output_dir": ".next",
+  "build_command": "npm run build",
+  "start_command": "npm run start"
+}
