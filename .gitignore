@@ -8,6 +8,8 @@
 
 # testing
 /coverage
+cypress/videos
+cypress/screenshots
 
 # next.js
 /.next/
@@ -37,3 +39,17 @@ next-env.d.ts
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Go proxy build artifacts
+proxy-m3u8/proxy
+proxy-m3u8/*.log
+
+# Documentation files (generated)
+*_FIX.md
+*_OPTIMIZATION*.md
+*_GUIDE.md
+*_RESULTS.md
+*_SUMMARY.md
+SETUP_GUIDE.md
+ENHANCED_PLAYER.md
+WORKER_ERROR_FIX.md

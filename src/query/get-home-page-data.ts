@@ -1,11 +1,11 @@
 import { GET_HOME_PAGE_DATA } from "@/constants/query-keys";
-import { api } from "@/lib/api";
+import { orpcClient } from "@/lib/orpc-integration";
 import { IAnimeData } from "@/types/anime";
 import { useQuery } from "react-query";
 
 const getHomePageData = async () => {
-    const res = await api.get("/api/home");
-    return res.data.data as IAnimeData;
+    const res = await orpcClient.getHomePage();
+    return res.data as IAnimeData;
 };
 
 export const useGetHomePageData = () => {

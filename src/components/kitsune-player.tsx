@@ -11,6 +11,7 @@ import Artplayer from "artplayer";
 import type { Option } from "artplayer/types/option";
 import Hls from "hls.js";
 
+
 // Helper functions and types (keep or import from your types file)
 import { IEpisodeServers, IEpisodeSource, IEpisodes } from "@/types/episodes"; // Adjust path as needed
 import loadingImage from "@/assets/genkai.gif"; // Adjust path as needed
@@ -20,7 +21,6 @@ import { env } from "next-runtime-env"; // Ensure this works in client component
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import useBookMarks from "@/hooks/use-get-bookmark";
-import { pb } from "@/lib/pocketbase";
 import Image from "next/image";
 
 const WATCH_PROGRESS_UPDATE_INTERVAL = 10000; // Update every 10 seconds
@@ -71,6 +71,8 @@ function KitsunePlayer({
 
   // State only needed for the current auto-skip setting
   const [isAutoSkipEnabled, setIsAutoSkipEnabled] = useState(autoSkip);
+  const [isMediaLoading, setIsMediaLoading] = useState(false);
+  const [isCleanupInProgress, setIsCleanupInProgress] = useState(false);
 
   const bookmarkIdRef = useRef<string | null>(null);
   const watchHistoryIdsRef = useRef<string[]>([]); // Store initial list
@@ -98,13 +100,16 @@ function KitsunePlayer({
     if (!firstSourceUrl || !referer) return null;
 
     try {
-      const url = encodeURIComponent(firstSourceUrl);
-      return `${proxyBaseURI}?url=${url}&referer=${referer}`;
+      const params = new URLSearchParams();
+      params.append("url", firstSourceUrl);
+      params.append("referer", referer);
+
+      return `${proxyBaseURI}?${params.toString()}`;
     } catch (error) {
       console.error("Error constructing proxy URI:", error);
       return null;
     }
-  }, [episodeInfo]);
+  }, [episodeInfo, proxyBaseURI]);
 
   const skipTimesRef = useRef<{
     introStart?: number;
@@ -150,20 +155,16 @@ function KitsunePlayer({
       hasMetMinWatchTimeRef.current = false; // Reset min watch time check
 
       // Now find the specific watched record ID for THIS episode
-      // Fetch again with expand (or use initial list if sufficient)
+      // Get watch history from localStorage
       try {
-        const expandedBookmark = await pb.collection("bookmarks").getOne(id, {
-          expand: "watchHistory",
-        });
+        const allWatchHistory = JSON.parse(localStorage.getItem('kitsune_watch_history') || '[]');
+        const episodeHistory = allWatchHistory.find((h: any) => 
+          h.id === id && h.episodeId === serversData.episodeId
+        );
 
         if (!isMounted) return;
 
-        const history = expandedBookmark.expand?.watchHistory as
-          | any[]
-          | undefined;
-        const existingWatched = history?.find(
-          (watched: any) => watched.episodeId === serversData.episodeId,
-        );
+        const existingWatched = episodeHistory;
 
         if (existingWatched) {
           watchedRecordIdRef.current = existingWatched.id;
@@ -211,12 +212,30 @@ function KitsunePlayer({
     // Wait for container ref and valid URI
     if (!artContainerRef.current || !uri) {
       // Clean up previous instances if URI becomes invalid or ref detach
-      if (hlsInstanceRef.current) {
-        hlsInstanceRef.current.destroy();
+      if (hlsInstanceRef.current && !isCleanupInProgress) {
+        try {
+          hlsInstanceRef.current.stopLoad();
+          if (hlsInstanceRef.current.media) {
+            hlsInstanceRef.current.detachMedia();
+          }
+          hlsInstanceRef.current.destroy();
+        } catch (error) {
+          console.warn("Error cleaning up HLS instance in URI check:", error);
+        }
         hlsInstanceRef.current = null;
       }
-      if (artInstanceRef.current) {
-        artInstanceRef.current.destroy(true);
+      if (artInstanceRef.current && !isCleanupInProgress) {
+        try {
+          artInstanceRef.current.pause();
+          if (artInstanceRef.current.video) {
+            artInstanceRef.current.video.removeAttribute("src");
+            artInstanceRef.current.video.src = '';
+            artInstanceRef.current.video.load();
+          }
+          artInstanceRef.current.destroy(true);
+        } catch (error) {
+          console.warn("Error cleaning up ArtPlayer instance in URI check:", error);
+        }
         artInstanceRef.current = null;
       }
       return;
@@ -345,31 +364,154 @@ function KitsunePlayer({
           artPlayerInstance: Artplayer,
         ) => {
           if (Hls.isSupported()) {
+            setIsMediaLoading(true);
             // Destroy previous HLS instance if attached to this player
             if (hlsInstanceRef.current) {
-              hlsInstanceRef.current.destroy();
+              try {
+                hlsInstanceRef.current.destroy();
+              } catch (error) {
+                console.warn("Error destroying previous HLS instance:", error);
+              }
             }
-            const hls = new Hls();
+            const hls = new Hls({
+              // Enable web worker for better performance
+              enableWorker: true,
+
+              // Low latency mode OFF for better stability
+              lowLatencyMode: false,
+
+              // OPTIMIZED BUFFER SETTINGS - Reduced for faster startup
+              maxBufferLength: 10,              // Reduced from 30 - buffer 10s ahead (was causing slow startup)
+              maxMaxBufferLength: 30,           // Reduced from 600 - max 30s buffer
+              maxBufferSize: 20 * 1000 * 1000,  // Reduced from 60MB to 20MB
+              maxBufferHole: 0.5,               // Jump over 0.5s gaps
+              backBufferLength: 30,             // Reduced from 90 - keep 30s behind
+
+              // PROGRESSIVE LOADING - Start playback quickly
+              startLevel: -1,                   // Auto quality selection
+
+              // RETRY CONFIGURATION - Balanced for reliability
+              fragLoadingMaxRetry: 3,           // Reduced from 6 - fail faster
+              fragLoadingMaxRetryTimeout: 10000, // Reduced from 64s to 10s
+              fragLoadingRetryDelay: 500,       // Reduced from 1s to 0.5s
+
+              levelLoadingMaxRetry: 3,          // Reduced from 4
+              levelLoadingMaxRetryTimeout: 10000, // Reduced from 64s
+              levelLoadingRetryDelay: 500,
+
+              manifestLoadingMaxRetry: 3,       // Reduced from 6
+              manifestLoadingMaxRetryTimeout: 10000, // Reduced from 64s
+              manifestLoadingRetryDelay: 500,
+
+              // LIVE SYNC - Better handling of live streams
+              liveSyncDurationCount: 3,
+              liveMaxLatencyDurationCount: 10,
+
+              // ABR (Adaptive Bitrate) - Faster quality switching
+              abrEwmaDefaultEstimate: 500000,   // 500kbps initial estimate
+              abrBandWidthFactor: 0.95,         // Use 95% of measured bandwidth
+              abrBandWidthUpFactor: 0.7,        // Faster quality increases
+            });
+
+            // Track consecutive errors to prevent spam
+            let consecutiveErrors = 0;
+            const MAX_CONSECUTIVE_ERRORS = 10;
+            let lastErrorTime = 0;
+            const ERROR_THROTTLE_MS = 1000;
+
+            // Add error handling with intelligent recovery
+            hls.on(Hls.Events.ERROR, (event, data) => {
+              const now = Date.now();
+
+              // Only log fatal errors or throttled non-fatal errors
+              if (data.fatal) {
+                console.error("HLS.js Fatal Error:", {
+                  type: data.type,
+                  details: data.details,
+                  reason: data.reason,
+                });
+
+                consecutiveErrors++;
+
+                if (consecutiveErrors > MAX_CONSECUTIVE_ERRORS) {
+                  console.error("Too many consecutive errors, stopping recovery attempts");
+                  artPlayerInstance.notice.show = "Video stream error. Please try another server.";
+                  return;
+                }
+
+                // Attempt recovery based on error type
+                switch (data.type) {
+                  case Hls.ErrorTypes.NETWORK_ERROR:
+                    console.log("Network error, attempting to recover...");
+                    hls.startLoad();
+                    break;
+                  case Hls.ErrorTypes.MEDIA_ERROR:
+                    console.log("Media error, attempting to recover...");
+                    hls.recoverMediaError();
+                    break;
+                  default:
+                    console.log("Unrecoverable fatal error");
+                    artPlayerInstance.notice.show = "Playback error. Please refresh or try another server.";
+                    break;
+                }
+              } else {
+                // Non-fatal errors - only log throttled
+                if (now - lastErrorTime > ERROR_THROTTLE_MS) {
+                  // Only log specific non-fatal errors that matter
+                  if (data.details === 'bufferStalledError' ||
+                      data.details === 'bufferNudgeOnStall' ||
+                      data.details === 'bufferSeekOverHole') {
+                    console.warn("HLS.js Non-Fatal Error (throttled):", data.details);
+                  }
+                  // Silently ignore fragParsingError and other recoverable errors
+                  lastErrorTime = now;
+                }
+              }
+            });
+
+            // Reset error counter on successful fragment load
+            hls.on(Hls.Events.FRAG_LOADED, () => {
+              consecutiveErrors = 0;
+            });
+            
+            // Add load success handler
+            hls.on(Hls.Events.MANIFEST_LOADED, () => {
+              console.log("HLS manifest loaded successfully");
+              setIsMediaLoading(false);
+            });
+            
             hls.loadSource(url);
             hls.attachMedia(videoElement);
             hlsInstanceRef.current = hls; // Store ref
             currentHlsInstanceForCleanup = hls; // Store for cleanup
+            
+            // Attach HLS instance to ArtPlayer for plugins
+            art.hls = hls;
             // Make sure HLS instance is destroyed when ArtPlayer instance is destroyed
             artPlayerInstance.on("destroy", () => {
-              if (hlsInstanceRef.current === hls) {
-                // Check if it's the same instance
-                hls.destroy();
-                hlsInstanceRef.current = null;
-                currentHlsInstanceForCleanup = null;
-                console.log(
-                  "HLS instance destroyed via ArtPlayer destroy event.",
-                );
+              if (hlsInstanceRef.current === hls && !isCleanupInProgress) {
+                // Check if it's the same instance and cleanup not in progress
+                try {
+                  hls.destroy();
+                  hlsInstanceRef.current = null;
+                  art.hls = undefined; // Remove HLS reference from ArtPlayer
+                  currentHlsInstanceForCleanup = null;
+                  console.log(
+                    "HLS instance destroyed via ArtPlayer destroy event.",
+                  );
+                } catch (error) {
+                  console.warn("Error destroying HLS instance in ArtPlayer destroy:", error);
+                }
               }
             });
           } else if (
             videoElement.canPlayType("application/vnd.apple.mpegurl")
           ) {
+            setIsMediaLoading(true);
             videoElement.src = url; // Fallback for Safari native HLS
+            videoElement.addEventListener('loadedmetadata', () => {
+              setIsMediaLoading(false);
+            }, { once: true });
           } else {
             artPlayerInstance.notice.show =
               "HLS playback is not supported on your browser.";
@@ -692,8 +834,11 @@ function KitsunePlayer({
       getInstance(art);
     }
 
-    // --- Cleanup Function ---
-    return () => {
+    // --- Async Cleanup Function ---
+    const cleanupPlayer = async () => {
+      if (isCleanupInProgress) return;
+      setIsCleanupInProgress(true);
+      
       console.log(
         "Running cleanup for ArtPlayer instance:",
         artInstanceRef.current?.id,
@@ -702,81 +847,130 @@ function KitsunePlayer({
       const art = artInstanceRef.current; // Get instance ref
       const hls = hlsInstanceRef.current; // Get HLS ref
 
-      if (hls) {
-        console.log("Cleanup: Detaching HLS media");
-        // Although hls.destroy() calls detachMedia, being explicit can sometimes help timing
-        if (hls.media) {
-          hls.detachMedia();
-        }
-        console.log("Cleanup: Destroying HLS instance.");
-        hls.destroy();
-        hlsInstanceRef.current = null;
-      }
-
-      if (
-        art &&
-        art.duration > 0 &&
-        (hasMetMinWatchTimeRef.current || watchedRecordIdRef.current)
-      ) {
-        console.log("Syncing final progress on unmount.");
-        // Use current values directly
-        syncWatchProgress(bookmarkIdRef.current, watchedRecordIdRef.current, {
-          episodeId: serversData.episodeId,
-          episodeNumber: parseInt(serversData.episodeNo),
-          current: art.currentTime,
-          duration: art.duration,
-        }); // Don't need to wait for promise here
-      }
-
-      // Clear throttle timer
-      if (updateTimerRef.current) {
-        clearTimeout(updateTimerRef.current);
-        updateTimerRef.current = null;
-      }
-
-      if (art) {
-        console.log("Cleanup: Destroying ArtPlayer instance.");
-        art.off("video:pause", handleInteractionUpdate);
-        art.off("video:seeked", handleInteractionUpdate);
-        art.off("video:timeupdate", handleTimeUpdate);
-
-        console.log("Cleanup: Pausing player");
-        art.pause(); // Explicitly pause
-
-        if (art.video) {
-          console.log("Cleanup: Removing video src and loading");
-          art.video.removeAttribute("src"); // Remove source
-          art.video.load(); // Force reload/reset state
+      try {
+        // Wait for media loading to complete before cleanup
+        if (isMediaLoading) {
+          console.log("Waiting for media loading to complete before cleanup...");
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
-        if (currentHlsInstanceForCleanup) {
-          console.log(
-            "Cleanup: Destroying HLS instance specifically for ArtPlayer:",
-            art.id,
-          );
-          currentHlsInstanceForCleanup.destroy();
-          // If the global hlsInstanceRef still points to this one, nullify it.
-          if (hlsInstanceRef.current === currentHlsInstanceForCleanup) {
-            hlsInstanceRef.current = null;
+        // Sync final progress before destroying anything
+        if (
+          art &&
+          art.duration > 0 &&
+          (hasMetMinWatchTimeRef.current || watchedRecordIdRef.current)
+        ) {
+          console.log("Syncing final progress on unmount.");
+          try {
+            await syncWatchProgress(bookmarkIdRef.current, watchedRecordIdRef.current, {
+              episodeId: serversData.episodeId,
+              episodeNumber: parseInt(serversData.episodeNo),
+              current: art.currentTime,
+              duration: art.duration,
+            });
+          } catch (error) {
+            console.warn("Error syncing final progress:", error);
           }
-          currentHlsInstanceForCleanup = null; // Clear the closure variable
-        } else if (hlsInstanceRef.current) {
-          // Fallback: if currentHlsInstanceForCleanup wasn't set but global one exists,
-          // it *might* be the one. This is less ideal but a safeguard.
-          // The art.on('destroy') for HLS should have ideally handled this.
-          console.warn(
-            "Cleanup: currentHlsInstanceForCleanup was null, attempting to destroy hlsInstanceRef.current for ArtPlayer:",
-            art.id,
-          );
-          hlsInstanceRef.current.destroy();
-          hlsInstanceRef.current = null;
         }
 
-        art.destroy(true);
-        if (artInstanceRef.current === art) {
-          artInstanceRef.current = null;
+        // Clear throttle timer
+        if (updateTimerRef.current) {
+          clearTimeout(updateTimerRef.current);
+          updateTimerRef.current = null;
         }
+
+        if (art) {
+          console.log("Cleanup: Preparing to destroy ArtPlayer instance.");
+          
+          // Remove event listeners first
+          art.off("video:pause", handleInteractionUpdate);
+          art.off("video:seeked", handleInteractionUpdate);
+          art.off("video:timeupdate", handleTimeUpdate);
+
+          // Pause the player
+          try {
+            console.log("Cleanup: Pausing player");
+            art.pause();
+          } catch (error) {
+            console.warn("Error pausing player during cleanup:", error);
+          }
+
+          // Handle video element cleanup
+          if (art.video) {
+            try {
+              console.log("Cleanup: Cleaning up video element");
+              // Pause video element directly
+              art.video.pause();
+              // Remove source
+              art.video.removeAttribute("src");
+              art.video.src = '';
+              // Load empty source to reset state
+              art.video.load();
+            } catch (error) {
+              console.warn("Error cleaning up video element:", error);
+            }
+          }
+
+          // Handle HLS cleanup with proper error handling
+          if (hls && hlsInstanceRef.current === hls) {
+            try {
+              console.log("Cleanup: Destroying HLS instance");
+              // Stop any pending loads
+              hls.stopLoad();
+              // Detach media if attached
+              if (hls.media) {
+                hls.detachMedia();
+              }
+              // Destroy HLS instance
+              hls.destroy();
+            } catch (error) {
+              console.warn("Error destroying HLS instance:", error);
+            } finally {
+              hlsInstanceRef.current = null;
+              art.hls = undefined;
+            }
+          }
+
+          // Handle cleanup-specific HLS instance
+          if (currentHlsInstanceForCleanup && currentHlsInstanceForCleanup !== hls) {
+            try {
+              console.log("Cleanup: Destroying currentHlsInstanceForCleanup");
+              currentHlsInstanceForCleanup.stopLoad();
+              if (currentHlsInstanceForCleanup.media) {
+                currentHlsInstanceForCleanup.detachMedia();
+              }
+              currentHlsInstanceForCleanup.destroy();
+            } catch (error) {
+              console.warn("Error destroying currentHlsInstanceForCleanup:", error);
+            } finally {
+              currentHlsInstanceForCleanup = null;
+            }
+          }
+
+          // Finally destroy ArtPlayer instance
+          try {
+            console.log("Cleanup: Destroying ArtPlayer instance");
+            art.destroy(true);
+          } catch (error) {
+            console.warn("Error destroying ArtPlayer instance:", error);
+          } finally {
+            if (artInstanceRef.current === art) {
+              artInstanceRef.current = null;
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Unexpected error during cleanup:", error);
+      } finally {
+        setIsCleanupInProgress(false);
+        console.log("Cleanup completed");
       }
+    };
+
+    return () => {
+      cleanupPlayer().catch(error => {
+        console.error("Cleanup function failed:", error);
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uri, episodeInfo, animeInfo, subOrDub, getInstance, autoSkip]);
@@ -784,6 +978,7 @@ function KitsunePlayer({
   // --- Render ---
   return (
     <div
+      data-testid="video-player"
       className={cn(
         "relative w-full h-auto aspect-video  min-h-[20vh] sm:min-h-[30vh] md:min-h-[40vh] lg:min-h-[60vh] max-h-[500px] lg:max-h-[calc(100vh-150px)] bg-black overflow-hidden", // Added relative and overflow-hidden
         rest.className ?? "",

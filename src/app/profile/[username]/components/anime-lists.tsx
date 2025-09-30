@@ -44,11 +44,11 @@ function AnimeLists(props: Props) {
 
   return bookmarks && bookmarks.length > 0 ? (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mt-10">
+      <div data-testid="anime-lists" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mt-10">
         {bookmarks.map((bookmark) => {
-          const latestEpisode = bookmark.expand.watchHistory
-            ? bookmark.expand.watchHistory.sort(
-                (a, b) => b.episodeNumber - a.episodeNumber,
+          const latestEpisode = bookmark.watchHistory && bookmark.watchHistory.length > 0
+            ? bookmark.watchHistory.sort(
+                (a: any, b: any) => b.episodeNumber - a.episodeNumber,
               )[0]
             : null;
 

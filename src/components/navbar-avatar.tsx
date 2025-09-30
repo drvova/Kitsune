@@ -4,7 +4,7 @@ import { IAuthStore } from "@/store/auth-store";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import Link from "next/link";
 import { User, LogOut } from "lucide-react";
-import { pb } from "@/lib/pocketbase";
+import { logout } from "@/lib/auth-local";
 
 type Props = {
   auth: IAuthStore;
@@ -44,7 +44,7 @@ function NavbarAvatar({ auth }: Props) {
           <div
             className="flex flex-row space-x-2 items-center cursor-pointer "
             onClick={() => {
-              pb.authStore.clear();
+              logout();
               auth.clearAuth();
             }}
           >

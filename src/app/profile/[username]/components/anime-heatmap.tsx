@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from "react";
 import CalendarHeatmap from "react-calendar-heatmap";
-import { WatchHistory } from "@/hooks/use-get-bookmark";
 import styles from "../heatmap.module.css";
 import { useAuthStore } from "@/store/auth-store";
-import { pb } from "@/lib/pocketbase";
 import { toast } from "sonner";
 import { Tooltip } from "react-tooltip";
 
@@ -30,60 +28,29 @@ function AnimeHeatmap() {
     if (!auth?.id) return; // Need authenticated user ID
 
     try {
-      // 1. Get all bookmark records for the user
-      const bookmarkRecords = await pb
-        .collection<BookmarkData>("bookmarks")
-        .getFullList({
-          filter: `user = "${auth.id}"`,
-          fields: "watchHistory", // Only fetch the relation IDs needed
-        });
-
-      if (!bookmarkRecords || bookmarkRecords.length === 0) {
+      // 1. Get all bookmarks and watch history for the user from localStorage
+      const bookmarks = JSON.parse(localStorage.getItem('kitsune_bookmarks') || '[]');
+      const userBookmarks = bookmarks.filter((b: any) => b.user === auth.id);
+      
+      if (!userBookmarks || userBookmarks.length === 0) {
         console.log("No bookmarks found for user.");
         setHeatmapData([]);
         setTotalContributionCount(0);
         return;
       }
 
-      // 2. Collect all unique watched record IDs from all bookmarks
-      const watchedRecordIds = bookmarkRecords.reduce(
-        (acc: string[], bookmark) => {
-          // Ensure watchHistory is an array and add its IDs to accumulator
-          if (Array.isArray(bookmark.watchHistory)) {
-            bookmark.watchHistory.forEach((id) => {
-              if (!acc.includes(id)) {
-                // Add only unique IDs
-                acc.push(id);
-              }
-            });
-          }
-          return acc;
-        },
-        [],
+      // 2. Get all watch history records
+      const allWatchHistory = JSON.parse(localStorage.getItem('kitsune_watch_history') || '[]');
+      const userWatchHistory = allWatchHistory.filter((h: any) => 
+        userBookmarks.some((b: any) => b.id === h.id)
       );
 
-      if (watchedRecordIds.length === 0) {
-        setHeatmapData([]);
-        setTotalContributionCount(0);
-        return;
-      }
+      // 3. Process watch history to create heatmap data
+      const dailyCounts: { [key: string]: number } = {};
+      let totalCount = 0;
 
-      const watchedFilter = watchedRecordIds
-        .map((id) => `id = "${id}"`)
-        .join(" || ");
-
-      try {
-        // 4. Fetch all corresponding 'watched' records
-        const watchedRecords = await pb
-          .collection<WatchHistory>("watched")
-          .getFullList({
-            filter: watchedFilter,
-            fields: "created", // Only need the creation date
-          });
-        const dailyCounts: { [key: string]: number } = {};
-        let totalCount = 0;
-
-        watchedRecords.forEach((record) => {
+      userWatchHistory.forEach((record: any) => {
+        if (record.created) {
           const dateStr = record.created.substring(0, 10); // Extracts "YYYY-MM-DD"
 
           if (dailyCounts[dateStr]) {
@@ -92,20 +59,18 @@ function AnimeHeatmap() {
             dailyCounts[dateStr] = 1;
           }
           totalCount += 1;
-        });
+        }
+      });
 
-        const formattedData = Object.entries(dailyCounts).map(
-          ([date, count]) => ({
-            date,
-            count,
-          }),
-        );
+      const formattedData = Object.entries(dailyCounts).map(
+        ([date, count]) => ({
+          date,
+          count,
+        }),
+      );
 
-        setHeatmapData(formattedData);
-        setTotalContributionCount(totalCount);
-      } catch (error) {
-        console.error("Error fetching watched records:", error);
-      }
+      setHeatmapData(formattedData);
+      setTotalContributionCount(totalCount);
     } catch (error) {
       console.error("Error fetching or aggregating watch history:", error);
       toast.error("Failed to load watch activity.");
@@ -159,7 +124,7 @@ function AnimeHeatmap() {
   };
 
   return (
-    <>
+    <div data-testid="anime-heatmap">
       <p className="text-lg font-bold mb-4">
         Watched {totalContributionCount} episodes in the last year
       </p>
@@ -177,7 +142,7 @@ function AnimeHeatmap() {
         tooltipDataAttrs={(value) => getTooltipContent(value as HeatmapValue)}
       />
       <Tooltip id="heatmap-tooltip" />
-    </>
+    </div>
   );
 }
 

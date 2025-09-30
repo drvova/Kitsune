@@ -82,6 +82,7 @@ const EpisodeCard = ({
         href={`${ROUTES.WATCH}?anime=${props.animeId}&episode=${props.episode.episodeId}`}
       >
         <div
+          data-testid="episode-item"
           className="flex gap-5 items-center w-full relative h-fit rounded-md p-2"
           style={
             selectedEpisode === props.episode.episodeId

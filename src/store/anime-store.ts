@@ -15,3 +15,13 @@ export const useAnimeStore = create<IAnimeStore>((set) => ({
     selectedEpisode: '',
     setSelectedEpisode: (state: string) => set({ selectedEpisode: state }),
 }))
+
+// Optimized selectors to prevent unnecessary re-renders
+// Components should use these instead of subscribing to entire store
+export const useSelectedEpisode = () => useAnimeStore(state => state.selectedEpisode)
+export const useSetSelectedEpisode = () => useAnimeStore(state => state.setSelectedEpisode)
+export const useAnime = () => useAnimeStore(state => state.anime)
+export const useAnimeInfo = () => useAnimeStore(state => state.anime?.anime?.info)
+export const useAnimeId = () => useAnimeStore(state => state.anime?.anime?.info?.id)
+export const useAnimeName = () => useAnimeStore(state => state.anime?.anime?.info?.name)
+export const useAnimePoster = () => useAnimeStore(state => state.anime?.anime?.info?.poster)

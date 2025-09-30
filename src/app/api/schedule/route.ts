@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     : new Date().toISOString().split("T")[0];
 
   try {
-    const data = await hianime.getEstimatedSchedule(formattedDate);
+    const data = await hianime.getEstimatedSchedule(formattedDate, { timeout: 10000, retries: 1 });
     return Response.json({ data });
   } catch (err) {
     console.log(err);

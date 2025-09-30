@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useAnimeStore } from "@/store/anime-store";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { useSelectedEpisode, useAnimeInfo } from "@/store/anime-store";
 
 import { IWatchedAnime } from "@/types/watched-anime";
 import KitsunePlayer from "@/components/kitsune-player";
@@ -12,11 +12,12 @@ import { AlertCircleIcon, Captions, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useAuthStore } from "@/store/auth-store";
-import { pb } from "@/lib/pocketbase";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const VideoPlayerSection = () => {
-  const { selectedEpisode, anime } = useAnimeStore();
+  // Use optimized selectors to prevent re-renders from unrelated store changes
+  const selectedEpisode = useSelectedEpisode();
+  const animeInfo = useAnimeInfo();
 
   const { data: serversData } = useGetEpisodeServers(selectedEpisode);
 
@@ -44,26 +45,37 @@ const VideoPlayerSection = () => {
     JSON.parse(localStorage.getItem("watched") as string) || [],
   );
 
-  function changeServer(serverName: string, key: string) {
+  // Memoize player props to prevent KitsunePlayer from re-rendering when parent updates
+  const playerAnimeInfo = useMemo(() => ({
+    id: animeInfo?.id || '',
+    title: animeInfo?.name || '',
+    image: animeInfo?.poster || '',
+  }), [animeInfo?.id, animeInfo?.name, animeInfo?.poster]);
+
+  // Memoize server change handler
+  const changeServer = useCallback((serverName: string, key: string) => {
     setServerName(serverName);
     setKey(key);
     const preference = { serverName, key };
     localStorage.setItem("serverPreference", JSON.stringify(preference));
-  }
+  }, []);
 
-  async function onHandleAutoSkipChange(value: boolean) {
+  // Memoize auto skip handler
+  const onHandleAutoSkipChange = useCallback(async (value: boolean) => {
     setAutoSkip(value);
     if (!auth) {
       localStorage.setItem("autoSkip", JSON.stringify(value));
       return;
     }
-    const res = await pb.collection("users").update(auth.id, {
-      autoSkip: value,
-    });
-    if (res) {
+    // Update autoSkip in localStorage
+    const users = JSON.parse(localStorage.getItem('kitsune_users') || '[]');
+    const userIndex = users.findIndex((u: any) => u.id === auth.id);
+    if (userIndex >= 0) {
+      users[userIndex].autoSkip = value;
+      localStorage.setItem('kitsune_users', JSON.stringify(users));
       setAuth({ ...auth, autoSkip: value });
     }
-  }
+  }, [auth, setAuth]);
 
   useEffect(() => {
     if (auth) return;
@@ -72,27 +84,27 @@ const VideoPlayerSection = () => {
       return;
     }
 
-    if (episodeData) {
+    if (episodeData && animeInfo) {
       const existingAnime = watchedDetails.find(
-        (watchedAnime) => watchedAnime.anime.id === anime.anime.info.id,
+        (watchedAnime) => watchedAnime.anime.id === animeInfo.id,
       );
 
-      if (!existingAnime) {
+      if (!existingAnime && animeInfo) {
         // Add new anime entry if it doesn't exist
         const updatedWatchedDetails = [
           ...watchedDetails,
           {
             anime: {
-              id: anime.anime.info.id,
-              title: anime.anime.info.name,
-              poster: anime.anime.info.poster,
+              id: animeInfo.id,
+              title: animeInfo.name,
+              poster: animeInfo.poster,
             },
             episodes: [selectedEpisode],
           },
         ];
         localStorage.setItem("watched", JSON.stringify(updatedWatchedDetails));
         setWatchedDetails(updatedWatchedDetails);
-      } else {
+      } else if (animeInfo && existingAnime) {
         // Update the existing anime entry
         const episodeAlreadyWatched =
           existingAnime.episodes.includes(selectedEpisode);
@@ -100,7 +112,7 @@ const VideoPlayerSection = () => {
         if (!episodeAlreadyWatched) {
           // Add the new episode to the list
           const updatedWatchedDetails = watchedDetails.map((watchedAnime) =>
-            watchedAnime.anime.id === anime.anime.info.id
+            watchedAnime.anime.id === animeInfo.id
               ? {
                   ...watchedAnime,
                   episodes: [...watchedAnime.episodes, selectedEpisode],
@@ -117,7 +129,7 @@ const VideoPlayerSection = () => {
       }
     }
     //eslint-disable-next-line
-  }, [episodeData, selectedEpisode, auth]);
+  }, [episodeData, selectedEpisode, auth, animeInfo]);
 
   if (isLoading || !episodeData)
     return (
@@ -158,11 +170,7 @@ const VideoPlayerSection = () => {
         key={episodeData?.sources?.[0].url}
         episodeInfo={episodeData!}
         serversData={serversData!}
-        animeInfo={{
-          id: anime.anime.info.id,
-          title: anime.anime.info.name,
-          image: anime.anime.info.poster,
-        }}
+        animeInfo={playerAnimeInfo}
         subOrDub={key as "sub" | "dub"}
         autoSkip={autoSkip}
       />

@@ -7,10 +7,13 @@ export async function GET(
   const params = await props.params;
   try {
     const { id } = params;
-    const data = await hianime.getEpisodes(id);
+    const data = await hianime.getEpisodes(id, { timeout: 10000, retries: 1 });
     return Response.json({ data });
   } catch (err) {
-    console.log(err);
-    return Response.json({ error: "something went wrong" }, { status: 500 });
+    console.error('Episodes error:', err);
+    return Response.json({ 
+      error: "Failed to fetch episodes",
+      details: err instanceof Error ? err.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

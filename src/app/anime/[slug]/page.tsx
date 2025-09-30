@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import Image from "next/image";
 
 import Container from "@/components/container";
@@ -61,20 +61,44 @@ const SelectOptions: ISelectOptions[] = [
 
 const Page = () => {
   const { slug } = useParams();
-  const { data: anime, isLoading } = useGetAnimeDetails(slug as string);
+  const slugString = slug as string;
+
+  const { data: anime, isLoading } = useGetAnimeDetails(slugString);
   const { auth } = useAuthStore();
   const { bookmarks, createOrUpdateBookMark } = useBookMarks({
-    animeID: slug as string,
+    animeID: slugString,
     page: 1,
     per_page: 1,
   });
-  const [selected, setSelected] = useState(bookmarks?.[0]?.status || "");
+
+  // Initialize with bookmarks value only once to prevent re-renders
+  const [selected, setSelected] = useState(() => bookmarks?.[0]?.status || "");
 
   const { data: banner, isLoading: bannerLoading } = useGetAnimeBanner(
     anime?.anime.info.anilistId!,
   );
 
-  const handleSelect = async (value: string) => {
+  // Memoize anime info to prevent child component re-renders
+  const animeInfo = useMemo(() => ({
+    id: anime?.anime.info.id,
+    name: anime?.anime.info.name,
+    poster: anime?.anime.info.poster,
+  }), [anime?.anime.info.id, anime?.anime.info.name, anime?.anime.info.poster]);
+
+  // Memoize banner image source
+  const bannerSrc = useMemo(() =>
+    (banner?.Media.bannerImage as string) || anime?.anime.info.poster || '',
+    [banner?.Media.bannerImage, anime?.anime.info.poster]
+  );
+
+  // Memoize trailer video
+  const trailerVideo = useMemo(() =>
+    anime?.anime.info.promotionalVideos[0]?.source || undefined,
+    [anime?.anime.info.promotionalVideos]
+  );
+
+  // Memoize handler to prevent recreation on every render
+  const handleSelect = useCallback(async (value: string) => {
     if (!auth) {
       return;
     }
@@ -83,9 +107,9 @@ const Page = () => {
 
     try {
       await createOrUpdateBookMark(
-        slug as string,
-        anime?.anime.info.name!,
-        anime?.anime.info.poster!,
+        slugString,
+        animeInfo.name!,
+        animeInfo.poster!,
         value,
       );
     } catch (error) {
@@ -93,7 +117,7 @@ const Page = () => {
       setSelected(previousSelected);
       toast.error("Error adding to list", { style: { background: "red" } });
     }
-  };
+  }, [auth, selected, slugString, animeInfo.name, animeInfo.poster, createOrUpdateBookMark]);
 
   return isLoading || !anime ? (
     <Loading />
@@ -104,10 +128,8 @@ const Page = () => {
           <div className="absolute inset-0 m-auto w-full h-full bg-slate-900 animate-pulse"></div>
         ) : (
           <Image
-            src={
-              (banner?.Media.bannerImage as string) || anime.anime.info.poster
-            }
-            alt={anime.anime.info.name}
+            src={bannerSrc}
+            alt={animeInfo.name || 'Anime banner'}
             height={100}
             width={100}
             className="h-full w-full object-cover"
@@ -116,23 +138,25 @@ const Page = () => {
         )}
 
         <WatchTrailer
-          videoHref={anime.anime.info.promotionalVideos[0]?.source}
+          videoHref={trailerVideo}
         />
         <div className="absolute h-full w-full inset-0 m-auto bg-gradient-to-r from-slate-900 to-transparent"></div>
       </div>
       <Container className="z-50 md:space-y-10 pb-20">
         <div className="flex md:mt-[-9.375rem] mt-[-6.25rem] md:flex-row flex-col md:items-end md:gap-20 gap-10 ">
-          <AnimeCard
-            title={anime.anime.info.name}
-            poster={anime.anime.info.poster}
-            href={`${ROUTES.ANIME_DETAILS}/${anime.anime.info.id}`}
-            displayDetails={false}
-            variant="lg"
-            className="shrink-0"
-          />
+          <div data-testid="anime-poster">
+            <AnimeCard
+              title={animeInfo.name!}
+              poster={animeInfo.poster!}
+              href={`${ROUTES.ANIME_DETAILS}/${animeInfo.id}`}
+              displayDetails={false}
+              variant="lg"
+              className="shrink-0"
+            />
+          </div>
           <div className="flex flex-col md:gap-5 gap-2 pb-16">
-            <h1 className="md:text-5xl text-2xl md:font-black font-extrabold z-[9]">
-              {anime.anime.info.name}
+            <h1 data-testid="anime-title" className="md:text-5xl text-2xl md:font-black font-extrabold z-[9]">
+              {animeInfo.name}
             </h1>
             <div className="flex items-center gap-5">
               <WatchButton />
@@ -212,7 +236,7 @@ const Page = () => {
             </div>
             <div className="col-span-4 flex flex-col gap-5">
               <h3 className="text-xl font-semibold">Description</h3>
-              <p className="md:text-base text-xs leading-6">
+              <p data-testid="anime-description" className="md:text-base text-xs leading-6">
                 {anime.anime.info.description}
               </p>
             </div>
@@ -242,7 +266,7 @@ const Page = () => {
           </TabsContent>
 
           <TabsContent value="episodes" className="flex flex-col gap-5">
-            <AnimeEpisodes animeId={anime.anime.info.id} />
+            <AnimeEpisodes animeId={animeInfo.id!} />
           </TabsContent>
           {!!anime.anime.info.charactersVoiceActors.length && (
             <TabsContent

@@ -46,6 +46,7 @@ const AnimeCard = ({
   return (
     <Link href={props.href as string}>
       <div
+        data-testid="anime-card"
         className={cn([
           "rounded-xl overflow-hidden relative cursor-pointer hover:scale-105 duration-300",
           variant === "sm" &&

@@ -1,11 +1,11 @@
 "use client";
 
 import EpisodeCard from "./common/episode-card";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { useAnimeStore } from "@/store/anime-store";
-import { Episode, IEpisodes } from "@/types/episodes";
+import { useSetSelectedEpisode } from "@/store/anime-store";
+import { IEpisodes } from "@/types/episodes";
 import Select, { ISelectOptions } from "./common/select";
 import { Input } from "./ui/input";
 import { Bookmark } from "@/hooks/use-get-bookmark";
@@ -33,7 +33,8 @@ const EpisodePlaylist = ({
 
   const isLatestEpisode = searchParams.get("type");
 
-  const { setSelectedEpisode } = useAnimeStore();
+  // Use optimized selector
+  const setSelectedEpisode = useSetSelectedEpisode();
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const episodeRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -43,13 +44,24 @@ const EpisodePlaylist = ({
   );
   const [search, setSearch] = useState("");
 
-  const [start, end] = currentGroup.split(" - ").map(Number);
-  const filtered = episodes.episodes.filter((_, index) => {
-    return index >= start - 1 && index <= end - 1;
-  });
+  // Replace derived state with useMemo to prevent unnecessary re-renders
+  const filteredEpisodes = useMemo(() => {
+    if (!episodes || !episodes.episodes) return [];
 
-  const [filteredEpisodes, setFilteredEpisodes] =
-    React.useState<Episode[]>(filtered);
+    const [start, end] = currentGroup.split(" - ").map(Number);
+    let filtered = episodes.episodes.filter((_, index) => {
+      return index >= start - 1 && index <= end - 1;
+    });
+
+    // Apply search filter if search value exists
+    if (search.trim()) {
+      filtered = filtered.filter((episode) =>
+        episode.number.toString().toLowerCase().includes(search.toLowerCase())
+      );
+    }
+
+    return filtered;
+  }, [episodes, currentGroup, search]);
 
   useEffect(() => {
     if (
@@ -68,15 +80,7 @@ const EpisodePlaylist = ({
     //eslint-disable-next-line
   }, [episodes]);
 
-  useEffect(() => {
-    if (!episodes || currentGroup === "") return;
-    const [start, end] = currentGroup.split(" - ").map(Number);
-    const filtered = episodes.episodes.filter((_, index) => {
-      return index >= start - 1 && index <= end - 1;
-    });
-
-    setFilteredEpisodes(filtered);
-  }, [episodes, currentGroup]);
+  // Removed redundant useEffect - filtering now handled by useMemo above
 
   useEffect(() => {
     const episodeIndex = episodes?.episodes.findIndex(
@@ -106,26 +110,9 @@ const EpisodePlaylist = ({
     //eslint-disable-next-line
   }, [animeId, episodes]);
 
+  // Simplified - useMemo handles filtering reactively
   const handleOnSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!episodes) return;
-    const value = e.target.value;
-    setSearch(value);
-
-    if (!value) {
-      // check if group is selected and filter based on that
-      const [start, end] = currentGroup.split(" - ").map(Number);
-      const filtered = episodes.episodes.filter((_, index) => {
-        return index >= start - 1 && index <= end - 1;
-      });
-      setFilteredEpisodes(filtered);
-      return;
-    }
-
-    const filtered = episodes?.episodes.filter((episode) =>
-      episode.number.toString().toLowerCase().includes(value.toLowerCase()),
-    );
-
-    setFilteredEpisodes(filtered);
+    setSearch(e.target.value);
   };
 
   const handleOnSelectChange = (range: string) => {
@@ -153,7 +140,7 @@ const EpisodePlaylist = ({
 
   return (
     episodes && (
-      <div className="col-span-1 flex flex-col w-full gap-5 border-[.0313rem] border-secondary rounded-md overflow-hidden min-h-[20vh] sm:min-h-[30vh] md:min-h-[40vh] lg:min-h-[60vh] max-h-[500px]">
+      <div data-testid="episode-playlist" className="col-span-1 flex flex-col w-full gap-5 border-[.0313rem] border-secondary rounded-md overflow-hidden min-h-[20vh] sm:min-h-[30vh] md:min-h-[40vh] lg:min-h-[60vh] max-h-[500px]">
         <div className="h-fit bg-[#18181a] px-5 py-3">
           <h3 className="text-lg font-semibold"> Episode Playlist</h3>
           <span className="text-sm font-thin">{title}</span>
@@ -186,7 +173,7 @@ const EpisodePlaylist = ({
                   variant={"list"}
                   episode={episode}
                   animeId={animeId}
-                  watchedEpisodes={bookmarks?.[0].expand.watchHistory}
+                  watchedEpisodes={bookmarks?.[0].watchHistory}
                 />
               </div>
             ))}

@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Input } from "./ui/input";
 import { Search } from "lucide-react";
 import EpisodeCard from "./common/episode-card";
 import { useGetAllEpisodes } from "@/query/get-all-episodes";
-import { Episode } from "@/types/episodes";
 import {
   Select,
   SelectContent,
@@ -21,70 +20,70 @@ type Props = {
 };
 
 const AnimeEpisodes = ({ animeId }: Props) => {
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
-  const [allEpisodes, setAllEpisodes] = useState<Episode[]>([]);
-  const [ranges, setRanges] = useState<string[]>([]);
-  const [selectedRange, setSelectedRange] = useState<string>("");
-
   const { data, isLoading } = useGetAllEpisodes(animeId);
 
-  useEffect(() => {
-    if (data) {
-      const episodes = data.episodes;
-      setAllEpisodes(episodes);
+  const [selectedRange, setSelectedRange] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
-      if (episodes.length > 50) {
-        // Calculate ranges
-        const rangesArray = [];
-        for (let i = 0; i < episodes.length; i += 50) {
-          const start = i + 1;
-          const end = Math.min(i + 50, episodes.length);
-          rangesArray.push(`${start}-${end}`);
-        }
-        setRanges(rangesArray);
-        setSelectedRange(rangesArray[0]);
+  // Memoize all episodes to prevent recreation
+  const allEpisodes = useMemo(() => data?.episodes || [], [data?.episodes]);
 
-        // Filter the first range directly from episodes
-        const filteredEpisodes = episodes.filter(
-          (_, index) => index + 1 >= 1 && index + 1 <= 50,
-        );
-        setEpisodes(filteredEpisodes);
-      } else {
-        setEpisodes(episodes);
-      }
+  // Memoize ranges calculation
+  const ranges = useMemo(() => {
+    if (allEpisodes.length <= 50) return [];
+
+    const rangesArray = [];
+    for (let i = 0; i < allEpisodes.length; i += 50) {
+      const start = i + 1;
+      const end = Math.min(i + 50, allEpisodes.length);
+      rangesArray.push(`${start}-${end}`);
     }
-  }, [data]);
+    return rangesArray;
+  }, [allEpisodes.length]);
 
-  const handleRangeChange = (range: string) => {
-    setSelectedRange(range);
+  // Initialize selected range once when ranges are available
+  useEffect(() => {
+    if (ranges.length > 0 && !selectedRange) {
+      setSelectedRange(ranges[0]);
+    }
+  }, [ranges, selectedRange]);
 
-    const [start, end] = range.split("-").map(Number);
-    const filteredEpisodes = allEpisodes.filter(
-      (_, index) => index + 1 >= start && index + 1 <= end,
-    );
-    setEpisodes(filteredEpisodes);
-  };
+  // Memoize filtered episodes based on range and search
+  const filteredEpisodes = useMemo(() => {
+    let result = allEpisodes;
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value.toLowerCase();
-    if (!query) {
-      // Reset episodes to the selected range
+    // Apply range filter if we have ranges
+    if (ranges.length > 0 && selectedRange) {
       const [start, end] = selectedRange.split("-").map(Number);
-      const filteredEpisodes = allEpisodes.filter(
-        (_, index) => index + 1 >= start && index + 1 <= end,
+      result = allEpisodes.filter(
+        (_, index) => index + 1 >= start && index + 1 <= end
       );
-      setEpisodes(filteredEpisodes);
-    } else {
-      const filteredEpisodes = episodes.filter((episode, index) => {
+    }
+
+    // Apply search filter if query exists
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter((episode, index) => {
         return (
           (index + 1).toString().includes(query) ||
           episode.title.toLowerCase().includes(query) ||
           "episode".includes(query.trim())
         );
       });
-      setEpisodes(filteredEpisodes);
     }
-  };
+
+    return result;
+  }, [allEpisodes, ranges.length, selectedRange, searchQuery]);
+
+  // Memoize handlers
+  const handleRangeChange = useCallback((range: string) => {
+    setSelectedRange(range);
+    setSearchQuery(""); // Clear search when changing range
+  }, []);
+
+  const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  }, []);
 
   return (
     <>
@@ -120,16 +119,16 @@ const AnimeEpisodes = ({ animeId }: Props) => {
           </div>
         </div>
       </div>
-      <div className="grid lg:grid-cols-5 grid-cols-4 sm:grid-cols-5 md:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-9 w-full gap-5 content-center">
-        {episodes.map((episode, idx) => (
+      <div data-testid="episode-list" className="grid lg:grid-cols-5 grid-cols-4 sm:grid-cols-5 md:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-9 w-full gap-5 content-center">
+        {filteredEpisodes.map((episode, idx) => (
           <EpisodeCard
             episode={episode}
-            key={idx}
+            key={episode.episodeId || idx}
             className="self-center justify-self-center"
             animeId={animeId}
           />
         ))}
-        {!episodes.length && !isLoading && (
+        {!filteredEpisodes.length && !isLoading && (
           <div className="lg:col-span-5 col-span-2 sm:col-span-3 md:col-span-4 xl:col-span-6 2xl:col-span-7 flex items-center justify-center py-10 bg-slate-900 rounded-md">
             No Episodes
           </div>

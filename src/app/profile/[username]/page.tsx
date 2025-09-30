@@ -5,7 +5,6 @@ import Avatar from "@/components/common/avatar";
 import { useAuthHydrated, useAuthStore } from "@/store/auth-store";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
-import { pb } from "@/lib/pocketbase";
 import { toast } from "sonner";
 import Image from "next/image";
 import CoverImage from "@/assets/cover.png";
@@ -39,16 +38,24 @@ function ProfilePage() {
   ) => {
     const file = event.target.files?.[0];
     if (file) {
-      const res = await pb.collection("users").update(auth.id, {
-        avatar: file,
-      });
-
-      if (res) {
-        setAuth({ ...auth, avatar: res.avatar });
-        toast.success("Avatar updated successfully", {
-          style: { background: "green" },
-        });
-      }
+      // Convert file to data URL
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        
+        // Update user in localStorage
+        const users = JSON.parse(localStorage.getItem('kitsune_users') || '[]');
+        const userIndex = users.findIndex((u: any) => u.id === auth.id);
+        if (userIndex >= 0) {
+          users[userIndex].avatar = dataUrl;
+          localStorage.setItem('kitsune_users', JSON.stringify(users));
+          setAuth({ ...auth, avatar: dataUrl });
+          toast.success("Avatar updated successfully", {
+            style: { background: "green" },
+          });
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -68,6 +75,7 @@ function ProfilePage() {
       <Container className="min-h-[70vh] mt-10 flex flex-col md:flex-row justify-around gap-8 md:gap-4">
         <div className="flex flex-col items-center gap-5 w-full md:w-1/3">
           <Avatar
+            data-testid="profile-avatar"
             className="w-[150px] h-[150px] cursor-pointer"
             username={auth.username}
             url={auth.avatar}
@@ -86,7 +94,7 @@ function ProfilePage() {
             onChange={handleFileChange}
             className="hidden"
           />
-          <h2 className="text-xl">@{auth.username}</h2>
+          <h2 data-testid="profile-username" className="text-xl">@{auth.username}</h2>
         </div>
         <div className="w-full md:w-2/3">
           <div className="w-full">

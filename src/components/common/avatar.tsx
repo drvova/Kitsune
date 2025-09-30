@@ -4,7 +4,6 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
-import { env } from "next-runtime-env";
 
 type Props = {
   url?: string;
@@ -18,12 +17,11 @@ type Props = {
 function Avatar({
   url,
   username,
-  id,
   className,
-  collectionID,
   onClick,
 }: Props) {
-  const src = `${env("NEXT_PUBLIC_POCKETBASE_URL")}/api/files/${collectionID}/${id}/${url}`;
+  // Use direct URL since we're no longer using PocketBase
+  const src = url || "";
 
   return (
     <AvatarCN className={className} onClick={onClick}>

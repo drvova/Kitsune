@@ -4,9 +4,9 @@ import Button from "./common/custom-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Input } from "./ui/input";
 import DiscordIcon from "@/icons/discord";
-import { pb } from "@/lib/pocketbase";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth-store";
+import { login, signup, logout } from "@/lib/auth-local";
 
 type FormData = {
   username: string;
@@ -25,6 +25,12 @@ function LoginPopoverButton() {
   });
   const [tabValue, setTabValue] = useState<"login" | "signup">("login");
 
+  const handleLogout = () => {
+    logout();
+    auth.clearAuth();
+    toast.success("Logged out successfully", { style: { background: "green" } });
+  };
+
   const loginWithEmail = async () => {
     try {
       if (formData.username === "" || formData.password === "") {
@@ -34,26 +40,28 @@ function LoginPopoverButton() {
         return;
       }
 
-      await pb
-        .collection("users")
-        .authWithPassword(formData.username, formData.password);
+      const result = await login(formData.username, formData.password);
 
-      if (pb.authStore.isValid && pb.authStore.record) {
+      if (result.success && result.user) {
         toast.success("Login successful", { style: { background: "green" } });
         clearForm();
         auth.setAuth({
-          id: pb.authStore.record.id,
-          email: pb.authStore.record.email,
-          username: pb.authStore.record.username,
-          avatar: pb.authStore.record.avatar,
-          collectionId: pb.authStore.record.collectionId,
-          collectionName: pb.authStore.record.collectionName,
-          autoSkip: pb.authStore.record.autoSkip,
+          id: result.user.id,
+          email: result.user.email,
+          username: result.user.username,
+          avatar: result.user.avatar || "",
+          collectionId: "users",
+          collectionName: "users",
+          autoSkip: result.user.autoSkip,
+        });
+      } else {
+        toast.error(result.error || "Login failed", {
+          style: { background: "red" },
         });
       }
     } catch (e) {
       console.error("Login error:", e);
-      toast.error("Invalid username or password", {
+      toast.error("Login failed", {
         style: { background: "red" },
       });
     }
@@ -72,33 +80,32 @@ function LoginPopoverButton() {
       return;
     }
 
-    try {
-      const user = await pb.collection("users").create({
-        username: formData.username,
-        email: formData.email,
-        password: formData.password,
-        passwordConfirm: formData.confirm_password,
+    if (formData.password !== formData.confirm_password) {
+      toast.error("Passwords do not match", {
+        style: { background: "red" },
       });
+      return;
+    }
 
-      if (user) {
+    try {
+      const result = await signup(formData.username, formData.email, formData.password);
+
+      if (result.success && result.user) {
         toast.success("Account created successfully. Please login.", {
           style: { background: "green" },
         });
         clearForm();
         setTabValue("login");
-      }
-    } catch (e: any) {
-      if (e.response?.data) {
-        for (const key in e.response?.data) {
-          toast.error(`${key}: ${e.response.data[key].message}`, {
-            style: { background: "red" },
-          });
-        }
       } else {
-        toast.error("Signup failed. Please try again.", {
+        toast.error(result.error || "Signup failed", {
           style: { background: "red" },
         });
       }
+    } catch (e) {
+      console.error("Signup error:", e);
+      toast.error("Signup failed. Please try again.", {
+        style: { background: "red" },
+      });
     }
   };
 
@@ -112,26 +119,9 @@ function LoginPopoverButton() {
   };
 
   const loginWithDiscord = async () => {
-    const res = await pb.collection("users").authWithOAuth2({
-      provider: "discord",
+    toast.error("Discord login is currently unavailable", {
+      style: { background: "red" },
     });
-
-    if (pb.authStore.isValid && pb.authStore.record) {
-      await pb.collection("users").update(pb.authStore.record?.id!, {
-        username: res.meta?.username,
-      });
-
-      toast.success("Login successful", { style: { background: "green" } });
-      auth.setAuth({
-        id: pb.authStore.record.id,
-        email: pb.authStore.record.email,
-        username: pb.authStore.record.username,
-        avatar: pb.authStore.record.avatar,
-        collectionId: pb.authStore.record.collectionId,
-        collectionName: pb.authStore.record.collectionName,
-        autoSkip: pb.authStore.record.autoSkip,
-      });
-    }
   };
 
   return (
@@ -141,18 +131,34 @@ function LoginPopoverButton() {
           variant="outline"
           className="bg-white text-md text-black hover:bg-gray-200 hover:text-black transition-all duration-300"
         >
-          Login
+          {auth.auth ? "Account" : "Login"}
         </Button>
       </PopoverTrigger>
       <PopoverContent
         side="bottom"
         className="bg-black bg-opacity-50 backdrop-blur-sm w-[300px] mt-4 mr-4 p-4"
       >
-        <Tabs
-          defaultValue={tabValue}
-          value={tabValue}
-          onValueChange={(value) => setTabValue(value as "login" | "signup")}
-        >
+        {auth.auth ? (
+          <div className="flex flex-col gap-2">
+            <div className="text-center">
+              <p className="text-white font-medium">Welcome, {auth.auth.username}!</p>
+              <p className="text-gray-300 text-sm">{auth.auth.email}</p>
+            </div>
+            <Button
+              variant="outline"
+              className="w-full text-xs"
+              size="sm"
+              onClick={handleLogout}
+            >
+              Logout
+            </Button>
+          </div>
+        ) : (
+          <Tabs
+            defaultValue={tabValue}
+            value={tabValue}
+            onValueChange={(value) => setTabValue(value as "login" | "signup")}
+          >
           <TabsList>
             <TabsTrigger onClick={clearForm} value="login">
               Login
@@ -272,6 +278,7 @@ function LoginPopoverButton() {
             </Button>
           </TabsContent>
         </Tabs>
+        )}
       </PopoverContent>
     </Popover>
   );

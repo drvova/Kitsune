@@ -102,9 +102,9 @@ const SearchResults = () => {
 
   return (
     <div className="flex flex-col gap-10 mt-28 lg:mt-36 pb-20 min-h-[75vh]">
-      <div className="bg-slate-800 bg-opacity-50 backdrop-blur-sm rounded-lg p-5 flex flex-col gap-5">
-        <p className="text-lg font-semibold">Filters</p>
-        <div className="flex flex-wrap gap-3">
+      <div className="bg-slate-800 bg-opacity-50 backdrop-blur-sm rounded-lg p-3 flex flex-col gap-3">
+        <p className="text-sm font-semibold">Filters</p>
+        <div className="flex flex-wrap gap-2">
           <Select
             options={types}
             placeholder="Type"
@@ -143,10 +143,10 @@ const SearchResults = () => {
           />
         </div>
         <div>
-          <p className="text-lg font-semibold mt-4">Genres</p>
+          <p className="text-sm font-semibold mt-2">Genres</p>
           <ToggleGroup
             type="multiple"
-            className="flex flex-wrap justify-start gap-2 mt-4"
+            className="flex flex-wrap justify-start gap-1.5 mt-2"
             value={filters.genres?.split(",") || []}
             onValueChange={(value) => {
               onChange("genres", value.filter(Boolean).join(","));
@@ -158,7 +158,7 @@ const SearchResults = () => {
                 key={genre.value}
                 size="sm"
                 className={cn(
-                  "border border-slate-700 hover:border-[#e9376b] hover:text-[#e9376b] hover:bg-transparent",
+                  "h-7 px-2 text-xs border border-slate-700 hover:border-[#e9376b] hover:text-[#e9376b] hover:bg-transparent",
                   "data-[state=on]:border-[#e9376b] data-[state=on]:text-white data-[state=on]:bg-[#e9376b]",
                   filters.genres?.split(",").includes(genre.value)
                     ? "bg-[#e9376b] text-white"
@@ -170,17 +170,17 @@ const SearchResults = () => {
             ))}
           </ToggleGroup>
         </div>
-        <div className="flex items-center gap-2 mt-4">
+        <div className="flex items-center gap-2 mt-2">
           <Button
             size="sm"
-            className="w-[6.25rem] hover:bg-[#e9376b] bg-[#e9376b] text-white"
+            className="w-20 h-7 text-xs hover:bg-[#e9376b] bg-[#e9376b] text-white"
             onClick={applyFilters}
           >
             Filter
           </Button>
           <Button
             size="sm"
-            className="w-[6.25rem]"
+            className="w-20 h-7 text-xs"
             onClick={resetFilters}
             variant="link"
           >
@@ -210,7 +210,7 @@ const SearchResults = () => {
           })}
         </div>
       )}
-      <div className="grid lg:grid-cols-5 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 w-full gap-5 content-center">
+      <div data-testid="search-results" className="grid lg:grid-cols-5 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 w-full gap-5 content-center">
         {searchResults?.animes.map((anime, idx) => (
           <BlurFade key={idx} delay={idx * 0.05} inView>
             <AnimeCard

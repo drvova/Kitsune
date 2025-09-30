@@ -6,7 +6,7 @@ import Button from "./common/custom-button";
 import { AnimatePresence, motion } from "framer-motion";
 import { XIcon } from "lucide-react";
 
-const WatchTrailer = ({ videoHref }: { videoHref: string }) => {
+const WatchTrailer = ({ videoHref }: { videoHref?: string }) => {
   const [isVideoOpen, setIsVideoOpen] = useState(false);
 
   if (!videoHref) return <></>;

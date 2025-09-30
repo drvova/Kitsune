@@ -17,9 +17,9 @@ import useScrollPosition from "@/hooks/use-scroll-position";
 import { Sheet, SheetClose, SheetContent, SheetTrigger } from "./ui/sheet";
 import LoginPopoverButton from "./login-popover-button";
 import { useAuthStore } from "@/store/auth-store";
-import { pb } from "@/lib/pocketbase";
 import NavbarAvatar from "./navbar-avatar";
 import { toast } from "sonner";
+import { migratePasswords } from "@/lib/auth-local";
 
 const menuItems: Array<{ title: string; href?: string }> = [
   // {
@@ -44,27 +44,25 @@ const NavBar = () => {
   const isHeaderSticky = y > 0;
 
   useEffect(() => {
-    const refreshAuth = async () => {
-      const auth_token = JSON.parse(
-        localStorage.getItem("pocketbase_auth") as string,
-      );
+    const refreshAuth = () => {
+      const auth_token = localStorage.getItem("kitsune_auth");
       if (auth_token) {
         try {
-          const user = await pb.collection("users").authRefresh();
-          if (user) {
+          const authData = JSON.parse(auth_token);
+          if (authData.user) {
             auth.setAuth({
-              id: user.record.id,
-              email: user.record.email,
-              username: user.record.username,
-              avatar: user.record.avatar,
-              collectionId: user.record.collectionId,
-              collectionName: user.record.collectionName,
-              autoSkip: user.record.autoSkip,
+              id: authData.user.id,
+              email: authData.user.email,
+              username: authData.user.username,
+              avatar: authData.user.avatar || "",
+              collectionId: "users",
+              collectionName: "users",
+              autoSkip: authData.user.autoSkip,
             });
           }
         } catch (e) {
           console.error("Auth refresh error:", e);
-          localStorage.removeItem("pocketbase_auth");
+          localStorage.removeItem("kitsune_auth");
           auth.clearAuth();
           toast.error("Login session expired.", {
             style: { background: "red" },
@@ -72,6 +70,10 @@ const NavBar = () => {
         }
       }
     };
+    
+    // Migrate passwords if needed
+    migratePasswords();
+    
     refreshAuth();
   }, []);
 

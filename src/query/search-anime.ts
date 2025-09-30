@@ -20,5 +20,11 @@ export const useSearchAnime = (query: string) => {
   return useQuery({
     queryFn: () => searchAnime(query),
     queryKey: [SEARCH_ANIME, query],
+    refetchOnWindowFocus: false,
+    // Short stale time for search suggestions
+    staleTime: 2 * 60 * 1000,
+    cacheTime: 5 * 60 * 1000,
+    // Don't fetch if query is empty
+    enabled: query.trim().length > 0,
   });
 };
