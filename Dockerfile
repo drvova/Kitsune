@@ -1,10 +1,14 @@
 # Use Node.js 20 LTS for modern dependency compatibility
+# Updated: 2025-09-30 - Force cache refresh
 FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
+
+# Force Node.js version check and cache refresh
+RUN node --version && npm --version
 
 # Copy package files
 COPY package.json package-lock.json* ./
