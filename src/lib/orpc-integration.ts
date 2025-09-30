@@ -28,8 +28,9 @@ export interface ScheduleResponse {
 export class ORPCClient {
   private baseUrl: string
 
-  constructor(baseUrl: string = 'http://localhost:3000/api') {
-    this.baseUrl = baseUrl
+  constructor(baseUrl?: string) {
+    // Use relative URL in production, fallback to localhost for development
+    this.baseUrl = baseUrl || (typeof window !== 'undefined' ? '/api' : 'http://localhost:3000/api')
   }
 
   private async request<T>(endpoint: string, method: string = 'GET', data?: any): Promise<T> {

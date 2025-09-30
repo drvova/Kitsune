@@ -150,10 +150,16 @@ start_services() {
     print_status "Next.js port: 3000"
     print_status "Proxy port: 8080"
 
-    # Start Next.js server
-    print_status "Starting Next.js server..."
-    npm start &
-    NEXT_PID=$!
+    # Start Next.js server (using standalone build)
+    print_status "Starting Next.js standalone server..."
+    if [ -f ".next/standalone/server.js" ]; then
+        node .next/standalone/server.js &
+        NEXT_PID=$!
+    else
+        print_status "Standalone server not found, using next start..."
+        npm start &
+        NEXT_PID=$!
+    fi
 
     # Start proxy server with fallback logic
     print_status "Starting proxy server..."
