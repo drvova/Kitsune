@@ -40,7 +40,7 @@ export async function GET() {
 
   } catch (error) {
     logger.error('Health check failed', {
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
       type: 'health_check_error',
     });
 
@@ -48,7 +48,7 @@ export async function GET() {
       {
         status: "unhealthy",
         timestamp: new Date().toISOString(),
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       },
       { status: 503 }
     );

@@ -1,8 +1,7 @@
 // Production logging configuration
-const pino = require('pino');
+import pino from 'pino';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
-const isProduction = process.env.NODE_ENV === 'production';
 
 const logger = pino({
   level: process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info'),
@@ -40,7 +39,7 @@ const logger = pino({
 });
 
 // Create a request logger middleware for Next.js API routes
-export const requestLogger = (req, res, next) => {
+export const requestLogger = (req: any, res: any, next: any) => {
   const start = Date.now();
 
   logger.info({
@@ -67,7 +66,7 @@ export const requestLogger = (req, res, next) => {
 
 // Performance monitoring utility
 export const performanceLogger = {
-  measure: (name, operation) => {
+  measure: (name: string, operation: () => any) => {
     const start = performance.now();
     const result = operation();
     const duration = performance.now() - start;
@@ -82,7 +81,7 @@ export const performanceLogger = {
     return result;
   },
 
-  async measureAsync: (name, operation) => {
+  measureAsync: async (name: string, operation: () => Promise<any>) => {
     const start = performance.now();
     const result = await operation();
     const duration = performance.now() - start;
@@ -99,7 +98,7 @@ export const performanceLogger = {
 };
 
 // Error logging utility
-export const errorLogger = (error, context = {}) => {
+export const errorLogger = (error: Error, context: any = {}) => {
   logger.error({
     error: {
       name: error.name,
@@ -112,12 +111,14 @@ export const errorLogger = (error, context = {}) => {
 };
 
 // Structured logger for different log levels
-export default {
-  info: (message, data = {}) => logger.info({ ...data, type: 'info', message }),
-  warn: (message, data = {}) => logger.warn({ ...data, type: 'warning', message }),
-  error: (message, data = {}) => logger.error({ ...data, type: 'error', message }),
-  debug: (message, data = {}) => logger.debug({ ...data, type: 'debug', message }),
+const structuredLogger = {
+  info: (message: string, data: any = {}) => logger.info({ ...data, type: 'info', message }),
+  warn: (message: string, data: any = {}) => logger.warn({ ...data, type: 'warning', message }),
+  error: (message: string, data: any = {}) => logger.error({ ...data, type: 'error', message }),
+  debug: (message: string, data: any = {}) => logger.debug({ ...data, type: 'debug', message }),
   requestLogger,
   performanceLogger,
   errorLogger,
 };
+
+export default structuredLogger;
