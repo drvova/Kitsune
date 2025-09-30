@@ -1,5 +1,5 @@
 # Use Node.js 20 LTS for modern dependency compatibility
-# Updated: 2025-09-30 - Force cache refresh
+# Updated: 2025-09-30 - Fix Sevalla Docker build issues
 FROM node:20-alpine AS base
 
 # Install dependencies only when needed
@@ -7,14 +7,14 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Force Node.js version check and cache refresh
+# Ensure Node.js version and npm compatibility
 RUN node --version && npm --version
 
-# Copy package files
+# Copy package files first for better caching
 COPY package.json package-lock.json* ./
 
-# Install all dependencies (including dev dependencies for build)
-RUN npm ci && npm cache clean --force
+# Clean install with exact versions and enhanced flags
+RUN npm ci --prefer-offline --no-audit --no-fund --no-package-lock && npm cache clean --force
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -23,15 +23,27 @@ WORKDIR /app
 # Copy dependencies
 COPY --from=deps /app/node_modules ./node_modules
 
+# Copy configuration files first for better module resolution
+COPY tsconfig.json next.config.mjs ./
+
+# Copy build scripts
+COPY scripts/ ./scripts/
+
 # Copy source code
 COPY . .
 
-# Set build environment
+# Set build environment with Sevalla-specific optimizations
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+ENV WEBPACK_VERBOSE=true
+ENV SEVALLA_DEPLOYMENT=true
 
-# Build the application
-RUN npm run build
+# Make build scripts executable
+RUN chmod +x scripts/sevalla-build-helper.sh
+
+# Run optimized build using Sevalla helper
+RUN ./scripts/sevalla-build-helper.sh
 
 # Production image
 FROM base AS runner
@@ -59,7 +71,7 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
