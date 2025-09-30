@@ -30,7 +30,15 @@ export class ORPCClient {
 
   constructor(baseUrl?: string) {
     // Use relative URL in production, fallback to localhost for development
-    this.baseUrl = baseUrl || (typeof window !== 'undefined' ? '/api' : 'http://localhost:3000/api')
+    if (baseUrl) {
+      this.baseUrl = baseUrl
+    } else if (typeof window !== 'undefined') {
+      // Browser environment - use relative URL
+      this.baseUrl = '/api'
+    } else {
+      // Server environment - check if we're in production
+      this.baseUrl = process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:3000/api'
+    }
   }
 
   private async request<T>(endpoint: string, method: string = 'GET', data?: any): Promise<T> {
