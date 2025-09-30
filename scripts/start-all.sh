@@ -29,14 +29,43 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Function to check if port is available
+# Function to check if port is available and kill conflicting processes
 check_port() {
     local port=$1
     local service=$2
 
+    # Check if port is in use
     if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
-        print_error "Port $port is already in use (needed for $service)"
-        return 1
+        print_warning "Port $port is already in use (needed for $service)"
+
+        # Find and kill processes using the port
+        local pids=$(lsof -ti :$port 2>/dev/null || true)
+        if [ -n "$pids" ]; then
+            print_status "Attempting to free port $port by killing processes..."
+            echo "$pids" | xargs kill -TERM 2>/dev/null || true
+
+            # Wait a moment for processes to terminate
+            sleep 2
+
+            # Force kill if still running
+            pids=$(lsof -ti :$port 2>/dev/null || true)
+            if [ -n "$pids" ]; then
+                print_warning "Force killing remaining processes on port $port..."
+                echo "$pids" | xargs kill -KILL 2>/dev/null || true
+                sleep 1
+            fi
+
+            # Final check
+            if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+                print_error "Failed to free port $port"
+                return 1
+            else
+                print_success "Port $port is now available"
+            fi
+        else
+            print_error "Port $port is in use but couldn't identify process"
+            return 1
+        fi
     fi
     return 0
 }
@@ -102,12 +131,14 @@ graceful_shutdown() {
 start_services() {
     print_status "Starting Kitsune application with proxy..."
 
-    # Check if required ports are available
+    # Check and free required ports
     if ! check_port 3000 "Next.js"; then
+        print_error "Cannot start Next.js - port 3000 unavailable"
         exit 1
     fi
 
     if ! check_port 8080 "Proxy server"; then
+        print_error "Cannot start proxy server - port 8080 unavailable"
         exit 1
     fi
 

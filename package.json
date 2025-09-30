@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "start:proxy": "cd proxy-m3u8 && PORT=8080 ./proxy-server",
-    "start:all": "concurrently \"npm start\" \"npm run start:proxy\" --names \"next,proxy\" --prefix-colors \"cyan,magenta\"",
+    "start:all": "concurrently \"npm start\" \"npm run start:proxy\" --names \"next,proxy\" --prefix-colors \"cyan,magenta\" --kill-others-on-fail",
     "start:production": "./scripts/start-all.sh",
     "lint": "next lint",
     "cypress": "cypress open",
