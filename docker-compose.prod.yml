@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  kitsune:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+      args:
+        - NODE_ENV=production
+    image: kitsune:latest
+    container_name: kitsune-app-prod
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_PROXY_URL=http://proxy:4040
+      - NEXT_TELEMETRY_DISABLED=1
+      - LOG_LEVEL=info
+    depends_on:
+      proxy:
+        condition: service_healthy
+    networks:
+      - kitsune-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  proxy:
+    build:
+      context: ./proxy-m3u8
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    image: proxy-m3u8:latest
+    container_name: kitsune-proxy-prod
+    restart: always
+    ports:
+      - "4040:4040"
+    environment:
+      - PORT=4040
+      - CORS_DOMAIN=kitsune:3000
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    networks:
+      - kitsune-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4040/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  kitsune-network:
+    name: kitsune-network-prod
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Optional: Add monitoring services
+# Uncomment to enable monitoring stack
+#
+#  prometheus:
+#    image: prom/prometheus:latest
+#    container_name: kitsune-prometheus
+#    ports:
+#      - "9090:9090"
+#    volumes:
+#      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+#    networks:
+#      - kitsune-network
+#
+#  grafana:
+#    image: grafana/grafana:latest
+#    container_name: kitsune-grafana
+#    ports:
+#      - "3001:3000"
+#    environment:
+#      - GF_SECURITY_ADMIN_PASSWORD=admin
+#    volumes:
+#      - grafana-storage:/var/lib/grafana
+#    networks:
+#      - kitsune-network
+#
+#volumes:
+#  grafana-storage:

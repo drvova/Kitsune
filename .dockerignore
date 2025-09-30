@@ -1,32 +1,89 @@
-/node_modules
-/.pnp
-.pnp.js
-.yarn/install-state.gz
-
-/coverage
-
-/out/
-
-/build
-
-.DS_Store
-*.pem
-
+# Dependencies
+node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+bun.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
-.env*.local
-
-.vercel
-
+# Build outputs
+.next
+out
+build
+dist
+.cache
+.temp
 *.tsbuildinfo
-next-env.d.ts
 
+# Environment files
+.env*
+!.env.example
+
+# Testing
+coverage
+.nyc_output
+cypress/videos
+cypress/screenshots
+test-results
+playwright-report
+
+# Development
 .git
-.github
 .gitignore
+.github
 .husky
 .vscode
-Dockerfile
+.idea
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Documentation
 README.md
+*.md
+docs/
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Deployment
+.vercel
+.netlify
+
+# Config files that shouldn't be in container
+.eslintrc*
+.prettierrc*
+.editorconfig
+.nvmrc
+
+# Development scripts
+scripts/dev*
+scripts/test*
+
+# Temporary files
+*.tmp
+*.temp
