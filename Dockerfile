@@ -39,8 +39,14 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV WEBPACK_VERBOSE=true
 ENV SEVALLA_DEPLOYMENT=true
 
+# Install Go for proxy compilation
+RUN apk add --no-cache go git
+
 # Make build scripts executable
 RUN chmod +x scripts/sevalla-build-helper.sh
+
+# Build the proxy server
+RUN cd proxy-m3u8 && go build -o proxy-server cmd/main.go
 
 # Run optimized build using Sevalla helper
 RUN ./scripts/sevalla-build-helper.sh
@@ -74,4 +80,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+CMD ["npm", "run", "start:production"]

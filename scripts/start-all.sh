@@ -1,0 +1,196 @@
+#!/bin/bash
+
+# Production startup script for Next.js + Proxy concurrent execution
+# This script handles graceful startup and shutdown of both services
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Function to check if port is available
+check_port() {
+    local port=$1
+    local service=$2
+
+    if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+        print_error "Port $port is already in use (needed for $service)"
+        return 1
+    fi
+    return 0
+}
+
+# Function to wait for service to be ready
+wait_for_service() {
+    local url=$1
+    local service=$2
+    local max_attempts=30
+    local attempt=1
+
+    print_status "Waiting for $service to be ready..."
+
+    while [ $attempt -le $max_attempts ]; do
+        if curl -s -f "$url" > /dev/null 2>&1; then
+            print_success "$service is ready!"
+            return 0
+        fi
+
+        print_status "Attempt $attempt/$max_attempts: $service not ready yet..."
+        sleep 2
+        ((attempt++))
+    done
+
+    print_error "$service failed to start within $max_attempts attempts"
+    return 1
+}
+
+# Function to handle graceful shutdown
+graceful_shutdown() {
+    print_status "Received shutdown signal, stopping services gracefully..."
+
+    # Kill all child processes
+    if [ -n "$NEXT_PID" ]; then
+        print_status "Stopping Next.js server (PID: $NEXT_PID)..."
+        kill -TERM $NEXT_PID 2>/dev/null || true
+    fi
+
+    if [ -n "$PROXY_PID" ]; then
+        print_status "Stopping proxy server (PID: $PROXY_PID)..."
+        kill -TERM $PROXY_PID 2>/dev/null || true
+    fi
+
+    # Wait for processes to exit
+    sleep 5
+
+    # Force kill if still running
+    if [ -n "$NEXT_PID" ] && kill -0 $NEXT_PID 2>/dev/null; then
+        print_warning "Force killing Next.js server..."
+        kill -KILL $NEXT_PID 2>/dev/null || true
+    fi
+
+    if [ -n "$PROXY_PID" ] && kill -0 $PROXY_PID 2>/dev/null; then
+        print_warning "Force killing proxy server..."
+        kill -KILL $PROXY_PID 2>/dev/null || true
+    fi
+
+    print_success "All services stopped"
+    exit 0
+}
+
+# Function to start services
+start_services() {
+    print_status "Starting Kitsune application with proxy..."
+
+    # Check if required ports are available
+    if ! check_port 3000 "Next.js"; then
+        exit 1
+    fi
+
+    if ! check_port 8080 "Proxy server"; then
+        exit 1
+    fi
+
+    # Set environment variables
+    export NODE_ENV=production
+    export NEXT_TELEMETRY_DISABLED=1
+
+    print_status "Environment: $NODE_ENV"
+    print_status "Next.js port: 3000"
+    print_status "Proxy port: 8080"
+
+    # Check if proxy binary exists
+    if [ ! -f "proxy-m3u8/proxy-server" ]; then
+        print_status "Proxy binary not found, building it..."
+        cd proxy-m3u8 && go build -o proxy-server cmd/main.go && cd ..
+        print_success "Proxy binary built successfully"
+    fi
+
+    # Start Next.js server
+    print_status "Starting Next.js server..."
+    npm start &
+    NEXT_PID=$!
+
+    # Start proxy server
+    print_status "Starting proxy server..."
+    cd proxy-m3u8 && PORT=8080 ./proxy-server &
+    PROXY_PID=$!
+    cd ..
+
+    print_status "Services started:"
+    print_status "  - Next.js server (PID: $NEXT_PID) on http://localhost:3000"
+    print_status "  - Proxy server (PID: $PROXY_PID) on http://localhost:8080"
+
+    # Wait for services to be ready
+    wait_for_service "http://localhost:3000/api/health" "Next.js"
+    wait_for_service "http://localhost:8080/health" "Proxy server"
+
+    print_success "All services are running successfully!"
+    echo ""
+    print_status "Application URLs:"
+    print_status "  - Main application: http://localhost:3000"
+    print_status "  - Proxy service:   http://localhost:8080"
+    print_status "  - Health check:   http://localhost:3000/api/health"
+    echo ""
+    print_status "Press Ctrl+C to stop all services"
+
+    # Wait for services
+    wait $NEXT_PID $PROXY_PID
+}
+
+# Main execution
+main() {
+    print_status "Kitsune Production Startup Script"
+    echo "========================================"
+
+    # Set up signal handlers for graceful shutdown
+    trap graceful_shutdown SIGTERM SIGINT SIGQUIT
+
+    # Check if we're in the right directory
+    if [ ! -f "package.json" ]; then
+        print_error "package.json not found. Please run this script from the project root."
+        exit 1
+    fi
+
+    # Check if Node.js modules are installed
+    if [ ! -d "node_modules" ]; then
+        print_error "node_modules not found. Please run 'npm install' first."
+        exit 1
+    fi
+
+    # Check if concurrently is available
+    if ! command -v concurrently &> /dev/null; then
+        print_error "concurrently is not installed. Please run 'npm install'."
+        exit 1
+    fi
+
+    # Check if Go is available (for proxy)
+    if ! command -v go &> /dev/null; then
+        print_warning "Go is not available. Proxy server may not work."
+    fi
+
+    start_services
+}
+
+# Run main function
+main "$@"

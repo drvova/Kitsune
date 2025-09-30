@@ -1,0 +1,32 @@
+[build]
+  description = "Next.js application with TypeScript"
+
+[[build.env]]
+  name = "NODE_ENV"
+  value = "production"
+
+[[build.env]]
+  name = "NPM_CONFIG_PRODUCTION"
+  value = "false"
+
+[[build.env]]
+  name = "NEXT_TELEMETRY_DISABLED"
+  value = "1"
+
+[[build.env]]
+  name = "NODE_OPTIONS"
+  value = "--max-old-space-size=4096"
+
+[[build.env]]
+  name = "WEBPACK_VERBOSE"
+  value = "true"
+
+[[build.env]]
+  name = "SEVALLA_DEPLOYMENT"
+  value = "true"
+
+[run]
+  [run.processes]
+    [run.processes.web]
+      command = "npm run start:production"
+      default = true
