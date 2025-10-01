@@ -10,6 +10,7 @@ type envConfig struct {
 	RedpandaBrokers    string
 	RedpandaTopic      string
 	EnableStreamingMetrics bool
+	NextJSURL          string
 }
 
 var Env envConfig
@@ -29,5 +30,6 @@ func InitConfig() {
 		RedpandaBrokers:       getEnv("REDPANDA_BROKERS", "localhost:9092"),
 		RedpandaTopic:         getEnv("REDPANDA_TOPIC", "proxy-metrics"),
 		EnableStreamingMetrics: getEnv("ENABLE_STREAMING_METRICS", "false") == "true",
+		NextJSURL:             getEnv("NEXTJS_URL", "http://localhost:3001"),
 	}
 }

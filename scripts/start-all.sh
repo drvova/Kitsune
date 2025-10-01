@@ -132,23 +132,25 @@ start_services() {
     print_status "Starting Kitsune application with proxy..."
 
     # Check and free required ports
-    if ! check_port 3000 "Next.js"; then
-        print_error "Cannot start Next.js - port 3000 unavailable"
+    if ! check_port 3001 "Next.js"; then
+        print_error "Cannot start Next.js - port 3001 unavailable"
         exit 1
     fi
 
-    if ! check_port 8080 "Proxy server"; then
-        print_error "Cannot start proxy server - port 8080 unavailable"
+    if ! check_port 3000 "Proxy server"; then
+        print_error "Cannot start proxy server - port 3000 unavailable"
         exit 1
     fi
 
     # Set environment variables
     export NODE_ENV=production
     export NEXT_TELEMETRY_DISABLED=1
+    export PORT=3001  # Next.js will use this port
+    export NEXTJS_URL=http://localhost:3001  # Proxy will forward to this URL
 
     print_status "Environment: $NODE_ENV"
-    print_status "Next.js port: 3000"
-    print_status "Proxy port: 8080"
+    print_status "Next.js internal port: 3001"
+    print_status "Proxy public port: 3000"
 
     # Start Next.js server (using standalone build)
     print_status "Starting Next.js standalone server..."
@@ -168,15 +170,15 @@ start_services() {
     # Try different binary options in order of preference
     if [ -f "proxy-server-linux" ]; then
         print_status "Using Linux pre-built binary..."
-        PORT=8080 ./proxy-server-linux &
+        PORT=3000 NEXTJS_URL=$NEXTJS_URL ./proxy-server-linux &
         PROXY_PID=$!
     elif [ -f "proxy-server" ]; then
         print_status "Using pre-built binary..."
-        PORT=8080 ./proxy-server &
+        PORT=3000 NEXTJS_URL=$NEXTJS_URL ./proxy-server &
         PROXY_PID=$!
     elif command -v go &> /dev/null; then
         print_status "Building proxy from source..."
-        go build -o proxy-server cmd/main.go && PORT=8080 ./proxy-server &
+        go build -o proxy-server cmd/main.go && PORT=3000 NEXTJS_URL=$NEXTJS_URL ./proxy-server &
         PROXY_PID=$!
     else
         print_error "No proxy binary available and Go runtime not found."
@@ -188,19 +190,19 @@ start_services() {
     cd ..
 
     print_status "Services started:"
-    print_status "  - Next.js server (PID: $NEXT_PID) on http://localhost:3000"
-    print_status "  - Proxy server (PID: $PROXY_PID) on http://localhost:8080"
+    print_status "  - Next.js server (PID: $NEXT_PID) on http://localhost:3001 (internal)"
+    print_status "  - Proxy server (PID: $PROXY_PID) on http://localhost:3000 (public)"
 
     # Wait for services to be ready
-    wait_for_service "http://localhost:3000/api/health" "Next.js"
-    wait_for_service "http://localhost:8080/health" "Proxy server"
+    wait_for_service "http://localhost:3001/api/health" "Next.js"
+    wait_for_service "http://localhost:3000/health" "Proxy server"
 
     print_success "All services are running successfully!"
     echo ""
     print_status "Application URLs:"
-    print_status "  - Main application: http://localhost:3000"
-    print_status "  - Proxy service:   http://localhost:8080"
-    print_status "  - Health check:   http://localhost:3000/api/health"
+    print_status "  - Public access:    http://localhost:3000"
+    print_status "  - Proxy health:     http://localhost:3000/health"
+    print_status "  - Next.js (internal): http://localhost:3001"
     echo ""
     print_status "Press Ctrl+C to stop all services"
 
