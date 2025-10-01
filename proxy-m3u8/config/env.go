@@ -24,7 +24,7 @@ func getEnv(varName, defaultValue string) string {
 
 func InitConfig() {
 	Env = envConfig{
-		Port:                  getEnv("PORT", "8080"),
+		Port:                  getEnv("PORT", "3000"),
 		CorsDomain:            getEnv("CORS_DOMAIN", "*"),
 		RedpandaBrokers:       getEnv("REDPANDA_BROKERS", "localhost:9092"),
 		RedpandaTopic:         getEnv("REDPANDA_TOPIC", "proxy-metrics"),
